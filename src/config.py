@@ -36,6 +36,11 @@ class Config:
     FIRECRAWL_API_KEY = os.getenv('FIRECRAWL_API_KEY')
     FIRECRAWL_ENABLED = bool(FIRECRAWL_API_KEY)
     
+    # Telegram Notifications (optional)
+    TELEGRAM_BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+    TELEGRAM_CHAT_ID = os.getenv('TELEGRAM_CHAT_ID')
+    TELEGRAM_ENABLED = bool(TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID)
+    
     # Validation
     if REQUEST_TIMEOUT <= 0:
         raise ValueError("REQUEST_TIMEOUT must be positive")
