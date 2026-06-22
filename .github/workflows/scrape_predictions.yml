@@ -2,8 +2,12 @@ name: Scrape Predictions & Odds
 
 on:
   schedule:
-    - cron: '0 12 * * *'  # 12:00 PM UTC (3:00 PM EAT) - Afternoon predictions
-    - cron: '0 15 * * *'  # 3:00 PM UTC (6:00 PM EAT) - Evening backup
+    # Strategic timing based on tennis match schedules worldwide
+    - cron: '0 6 * * *'   # 6:00 AM UTC (9:00 AM EAT) - Catch overnight predictions
+    - cron: '0 10 * * *'  # 10:00 AM UTC (1:00 PM EAT) - Pre-afternoon check
+    - cron: '0 13 * * *'  # 1:00 PM UTC (4:00 PM EAT) - Prime prediction time
+    - cron: '0 16 * * *'  # 4:00 PM UTC (7:00 PM EAT) - Evening predictions
+    - cron: '0 20 * * *'  # 8:00 PM UTC (11:00 PM EAT) - Late night predictions
   workflow_dispatch:     # Manual trigger button
 
 jobs:

@@ -274,7 +274,7 @@ def main():
             logger.warning("No predictions found")
             logger.info("💡 This could mean:")
             logger.info("   1. No tennis matches today")
-            logger.info("   2. Predictions not released yet (try later)")
+            logger.info("   2. Predictions not released yet (try again in a few hours)")
             logger.info("   3. No tennis matches scheduled")
             
             log_scrape(
@@ -288,6 +288,23 @@ def main():
             return
         
         logger.info(f"\n✓ Found {len(predictions)} matches on homepage")
+        
+        # Quick check: if we've already scraped recently, check database first
+        try:
+            from src.database import get_connection, release_connection
+            conn = get_connection()
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM predictions WHERE prediction_date = CURRENT_DATE")
+            todays_predictions = cur.fetchone()[0]
+            cur.close()
+            release_connection(conn)
+            
+            if todays_predictions > 0:
+                logger.info(f"ℹ️ Already have {todays_predictions} predictions from today")
+                logger.info("Checking for new matches not yet in database...")
+        except Exception as e:
+            logger.debug(f"Could not check existing predictions: {e}")
+        
         logger.info("Now checking each match for predictions...\n")
         
         # Step 2: For each match, scrape details and save to database
@@ -353,6 +370,7 @@ def main():
                 
                 if prediction_id:
                     stats['saved'] += 1
+                    logger.info(f"💾 NEW prediction saved to database")
                     
                     # Save odds snapshot if we have odds data
                     odds = match.get('homepage_odds', {})
@@ -369,7 +387,7 @@ def main():
                             logger.warning(f"Could not save odds: {e}")
                 
                 else:
-                    logger.info(f"⊘ Prediction already in database")
+                    logger.info(f"⊘ Prediction already in database - skipping")
                 
                 # Polite delay between requests
                 smart_delay(2, 4)
