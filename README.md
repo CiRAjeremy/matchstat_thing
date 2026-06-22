@@ -1,113 +1,155 @@
 # 🎾 Tennis Prediction Tracker
 
-Automated system to scrape tennis match predictions from Matchstat.com, track results from FlashScore, and calculate ROI to determine if predictions are profitable.
+Automated system to track tennis predictions from Matchstat.com and calculate profitability.
+
+**Status:** ✅ Fully operational - scraping 5x/day, dashboard working, notifications ready
 
 ---
 
-## 🚀 Quick Start
+## ⚡ Quick Start (5 Minutes)
 
-### 1. Clone & Setup
+### 1. Setup
+
 ```bash
 git clone https://github.com/YOUR_USERNAME/matchstat_thing.git
 cd matchstat_thing
-```
-
-### 2. Create Virtual Environment
-```bash
 python -m venv venv
-.\venv\Scripts\activate  # Windows
+.\venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 3. Configure Database
-1. Create a free PostgreSQL database at [Neon.tech](https://neon.tech)
+### 2. Configure Database
+
+1. Create free database at [Neon.tech](https://neon.tech)
 2. Copy `.env.example` to `.env`
-3. Update `DATABASE_URL` with your connection string:
+3. Add your connection string:
    ```
    DATABASE_URL=postgresql://user:pass@host.neon.tech/db?sslmode=require
    ```
 
-### 4. Initialize Database
+### 3. Initialize & Test
+
 ```bash
 python setup_database.py
+python -c "from src.database import test_connection; test_connection()"
+python -m src.scrapers.matchstat_selenium  # Test scraper
 ```
 
-### 5. Test Locally
-```bash
-# Test database connection
-python -c "from src.database import test_connection; test_connection()"
+---
 
-# Run prediction scraper
+## 🚀 Usage
+
+### Run Dashboard Locally
+
+```bash
+.\venv\Scripts\activate
+pip install flask flask-cors  # First time only
+python dashboard/api.py
+```
+
+Open: **http://localhost:5000**
+
+### Manual Scraping
+
+```bash
+# Scrape predictions
 python -m src.scrapers.matchstat_selenium
 
-# Check predictions saved
-python -c "from src.database import get_connection, release_connection; conn = get_connection(); cur = conn.cursor(); cur.execute('SELECT COUNT(*) FROM predictions'); print(f'Predictions: {cur.fetchone()[0]}'); cur.close(); release_connection(conn)"
+# Scrape results
+python -m src.scrapers.flashscore
+```
+
+### Analysis
+
+```bash
+# Overall performance
+python -c "from analysis.roi_calculator import overall_performance; overall_performance()"
+
+# By surface (Hard/Clay/Grass)
+python -c "from analysis.roi_calculator import performance_by_surface; performance_by_surface()"
+
+# Monthly trend
+python -c "from analysis.roi_calculator import monthly_trend; monthly_trend()"
 ```
 
 ---
 
 ## 🤖 GitHub Actions Setup
 
-### Configure Secrets
-1. Go to your repository → **Settings** → **Secrets and variables** → **Actions**
+### Add Database Secret
+
+1. Go to repository **Settings** → **Secrets and variables** → **Actions**
 2. Click **New repository secret**
-3. Add secret:
-   - **Name:** `DATABASE_URL`
-   - **Value:** Your full connection string from `.env` file
-   - Example: `postgresql://user:password@ep-xxx.neon.tech/matchstat?sslmode=require`
+3. Name: `DATABASE_URL`
+4. Value: Your full connection string from `.env` (including `?sslmode=require`)
 
 ### Automated Schedule
-- **Predictions:** 5 times/day (9 AM, 1 PM, 4 PM, 7 PM, 11 PM EAT)
-- **Results:** Once daily at 1 AM EAT
-- **Manual trigger:** Go to Actions tab → Select workflow → "Run workflow"
+
+- **Predictions:** 5x/day (9 AM, 1 PM, 4 PM, 7 PM, 11 PM EAT)
+- **Results:** 1x/day (1 AM EAT)
+- **Manual trigger:** Actions tab → Select workflow → "Run workflow"
+
+---
+
+## 📱 Telegram Notifications (Optional)
+
+### Setup (10 minutes)
+
+1. **Create bot:** Search `@BotFather` in Telegram → `/newbot`
+2. **Get chat ID:** Search `@userinfobot` → `/start`
+3. **Add to `.env`:**
+   ```env
+   TELEGRAM_BOT_TOKEN=your_bot_token
+   TELEGRAM_CHAT_ID=your_chat_id
+   ```
+4. **Test:**
+   ```bash
+   python -c "from src.notifications import get_notifier; get_notifier().test_connection()"
+   ```
+
+### Add to GitHub Actions
+
+Add two more secrets:
+- `TELEGRAM_BOT_TOKEN`
+- `TELEGRAM_CHAT_ID`
+
+---
+
+## 🐛 Troubleshooting
+
+### "No predictions found"
+**Normal!** Predictions post 3-24 hours before matches (afternoon/evening EAT). Try again later.
+
+### "Database connection failed"
+```bash
+# Check .env has correct DATABASE_URL with ?sslmode=require
+python -c "from src.database import test_connection; test_connection()"
+```
+
+### "Password authentication failed" (GitHub Actions)
+1. Go to Settings → Secrets → Actions
+2. Check `DATABASE_URL` exists and matches your `.env` file exactly
+3. Must include `?sslmode=require` at the end
+
+### Dashboard shows "Error loading data"
+```bash
+# Make sure API is running
+python dashboard/api.py
+```
 
 ---
 
 ## 📊 How It Works
 
-### 1. Prediction Scraping (`matchstat_selenium.py`)
-- Scrapes Matchstat.com homepage for today's matches
-- Visits each match's H2H page
-- Extracts prediction: "Odds indicate [PLAYER] will win (X% probability)"
-- Saves to database with odds and match details
-- **Runs:** 5x daily to catch predictions across all timezones
+See **[ARCHITECTURE.md](ARCHITECTURE.md)** for detailed system design.
 
-### 2. Results Scraping (`flashscore.py`)
-- Checks predictions from 2 days ago
-- Scrapes FlashScore for match outcomes
-- Updates database with actual winner and score
-- Calculates ROI (10 KSH bet per prediction)
-- **Runs:** Once daily
-
-### 3. Analysis (`roi_calculator.py`)
-- Calculates overall win rate and total ROI
-- Performance by surface (Hard/Clay/Grass)
-- Performance by tour type (ATP/WTA/Challenger)
-- Monthly trends
-
----
-
-## 📈 Analyzing Performance
-
-### Overall Performance
-```bash
-python -c "from analysis.roi_calculator import overall_performance; overall_performance()"
-```
-
-### By Surface
-```bash
-python -c "from analysis.roi_calculator import performance_by_surface; performance_by_surface()"
-```
-
-### By Tour Type
-```bash
-python -c "from analysis.roi_calculator import performance_by_tour_type; performance_by_tour_type()"
-```
-
-### Monthly Trend
-```bash
-python -c "from analysis.roi_calculator import monthly_trend; monthly_trend()"
-```
+**TL;DR:**
+1. GitHub Actions runs scrapers automatically
+2. Selenium scrapes Matchstat for predictions (5x/day)
+3. Requests scrapes FlashScore for results (1x/day)
+4. PostgreSQL stores everything
+5. Dashboard shows stats & charts
+6. (Optional) Telegram sends notifications
 
 ---
 
@@ -115,137 +157,39 @@ python -c "from analysis.roi_calculator import monthly_trend; monthly_trend()"
 
 ```
 matchstat_thing/
-├── .github/workflows/       # GitHub Actions automation
-│   ├── scrape_predictions.yml  # Runs 5x daily
-│   └── scrape_results.yml      # Runs 1x daily
 ├── src/
 │   ├── scrapers/
-│   │   ├── matchstat_selenium.py  # Prediction scraper (Selenium)
+│   │   ├── matchstat_selenium.py  # Prediction scraper
 │   │   └── flashscore.py          # Results scraper
-│   ├── database.py          # All database operations
-│   ├── config.py            # Configuration from .env
-│   └── utils.py             # Helper functions
+│   ├── database.py                # All database operations
+│   ├── config.py                  # Configuration
+│   ├── notifications.py           # Telegram notifications
+│   └── utils.py                   # Helper functions
 ├── analysis/
-│   └── roi_calculator.py    # Performance analysis tools
-├── sql/
-│   └── schema.sql           # Database schema
-├── logs/
-│   └── scraper.log          # Execution logs
-├── .env                     # Your configuration (not in git)
-├── .env.example             # Template
-├── requirements.txt         # Python dependencies
-├── setup_database.py        # Database initialization
-├── verify_setup.py          # Test everything works
-└── README.md                # This file
+│   └── roi_calculator.py          # Performance analysis
+├── dashboard/
+│   ├── index.html                 # Dashboard UI
+│   └── api.py                     # API server
+├── .github/workflows/             # GitHub Actions automation
+├── sql/schema.sql                 # Database schema
+├── README.md                      # This file
+├── ARCHITECTURE.md                # System design docs
+└── .kiro/rules.md                 # LLM instructions
 ```
 
 ---
 
-## 🗄️ Database Schema
+## 💰 Cost
 
-### Tables
-- **players** - Player names and metadata
-- **predictions** - Match predictions with odds
-- **odds_snapshots** - Historical odds data
-- **scrape_logs** - Scraping execution logs
-
-### Views
-- **predictions_view** - Easy-to-query joined data
-- **roi_summary** - Performance metrics
+**$0/month** - Everything uses free tiers:
+- Neon PostgreSQL: Free tier
+- GitHub Actions: Unlimited for public repos
+- Dashboard: Free (local) or Vercel free tier
+- Telegram: Free
 
 ---
 
-## 🐛 Troubleshooting
-
-### "No predictions found"
-**Normal!** Predictions are posted 3-24 hours before matches, typically in afternoon/evening (3-6 PM EAT). Run again later.
-
-### "Database connection failed" (Locally)
-1. Check `.env` file exists and has correct `DATABASE_URL`
-2. Verify connection string includes `?sslmode=require`
-3. Test: `python -c "from src.database import test_connection; test_connection()"`
-
-### "Password authentication failed" (GitHub Actions)
-1. Go to repository **Settings** → **Secrets and variables** → **Actions**
-2. Check `DATABASE_URL` secret exists
-3. Verify it matches your `.env` file exactly (including `?sslmode=require`)
-4. Update secret if needed, then re-run workflow
-
-### GitHub Actions workflow fails
-1. Go to **Actions** tab
-2. Click failed workflow
-3. Click **scrape-predictions** or **scrape-results** job
-4. Expand steps to see error logs
-5. Download artifacts for full logs
-
----
-
-## 💰 Cost Analysis
-
-### Free Tier Usage
-- **Database:** Neon.tech free tier (512 MB storage, 0.5 GB data transfer)
-- **GitHub Actions:** Unlimited for public repos, 2,000 min/month for private
-- **Current usage:** ~300 minutes/month (15% of private repo limit)
-- **Total cost:** $0/month ✅
-
----
-
-## 📚 Additional Documentation
-
-- **STATUS.md** - System status and detailed usage guide
-- **SCRAPING_STRATEGY.md** - Why we scrape 5x/day (optimization analysis)
-- **QUICK_SUMMARY.md** - At-a-glance reference
-
----
-
-## 🎯 Expected Timeline
-
-### Week 1
-- Collect 20-25 predictions
-- Results start coming in after 2 days
-- Initial accuracy calculated
-
-### Week 2-4
-- 60-100 predictions collected
-- ROI trends become visible
-- Can identify profitable patterns (surface, tour type)
-
-### Month 2+
-- Statistical confidence improves
-- Identify best bet types
-- Optimize prediction selection strategy
-
----
-
-## 🛠️ Development
-
-### Run Tests
-```bash
-python -c "from src.database import test_connection; test_connection()"
-python verify_setup.py
-```
-
-### Manual Scraping
-```bash
-# Predictions
-python -m src.scrapers.matchstat_selenium
-
-# Results
-python -m src.scrapers.flashscore
-```
-
-### View Logs
-```bash
-# Windows
-type logs\scraper.log
-
-# Or open in editor
-code logs\scraper.log
-```
-
----
-
-## 📞 Quick Commands Reference
+## 📞 Common Commands
 
 ```bash
 # Activate environment
@@ -254,40 +198,33 @@ code logs\scraper.log
 # Test database
 python -c "from src.database import test_connection; test_connection()"
 
-# Count predictions
-python -c "from src.database import get_connection, release_connection; conn = get_connection(); cur = conn.cursor(); cur.execute('SELECT COUNT(*) FROM predictions'); print(f'Total: {cur.fetchone()[0]}'); cur.close(); release_connection(conn)"
-
-# Today's predictions
+# Count predictions today
 python -c "from src.database import get_connection, release_connection; conn = get_connection(); cur = conn.cursor(); cur.execute('SELECT COUNT(*) FROM predictions WHERE prediction_date = CURRENT_DATE'); print(f'Today: {cur.fetchone()[0]}'); cur.close(); release_connection(conn)"
 
-# Overall performance
-python -c "from analysis.roi_calculator import overall_performance; overall_performance()"
+# Run dashboard
+python dashboard/api.py
 
-# Run scraper
-python -m src.scrapers.matchstat_selenium
+# Overall stats
+python -c "from analysis.roi_calculator import overall_performance; overall_performance()"
 ```
 
 ---
 
-## 🤝 Contributing
+## 📚 Documentation
 
-This is a personal project, but feel free to fork and adapt for your own use!
-
----
-
-## 📄 License
-
-MIT License - Use freely!
+- **README.md** (this file) - Quick start & usage
+- **ARCHITECTURE.md** - How the system works (for future you)
+- **.kiro/rules.md** - Instructions for LLMs working on this project
 
 ---
 
-## 🙏 Credits
+## 🙏 Data Sources
 
-- **Matchstat.com** - Prediction data source
-- **FlashScore** - Match results data source
-- **Neon.tech** - Free PostgreSQL hosting
-- **GitHub Actions** - Free automation
+- **Predictions:** [Matchstat.com](https://matchstat.com)
+- **Results:** [FlashScore](https://www.flashscore.com)
+- **Database:** [Neon.tech](https://neon.tech)
+- **Automation:** GitHub Actions
 
 ---
 
-**Built to track and analyze tennis prediction profitability** 🎾📊
+**Built to determine if tennis predictions are profitable** 🎾📊
