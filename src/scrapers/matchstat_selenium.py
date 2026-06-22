@@ -2,6 +2,7 @@
 Matchstat.com prediction scraper using Selenium
 For JavaScript-rendered content
 """
+import re
 import logging
 import time
 from datetime import datetime
@@ -149,6 +150,103 @@ def scrape_matchstat_homepage_selenium() -> List[Dict[str, Any]]:
             driver.quit()
 
 
+def scrape_prediction_details(h2h_url: str, driver) -> Optional[Dict[str, Any]]:
+    """
+    Scrape prediction details from H2H page using Selenium
+    
+    Args:
+        h2h_url: URL to H2H prediction page
+        driver: Selenium WebDriver instance
+    
+    Returns:
+        dict with prediction details or None if no prediction found/match finished
+    """
+    logger.info(f"Scraping prediction from: {h2h_url}")
+    
+    try:
+        driver.get(h2h_url)
+        time.sleep(3)  # Wait for page to render
+        
+        page_text = driver.page_source
+        
+        # Check if match already finished
+        if 'Ended Score' in page_text or 'Final Score' in page_text:
+            logger.info("⊘ Match already finished - skipping")
+            return None
+        
+        # Look for prediction text: "Odds indicate [PLAYER] will win (XX% probability)"
+        prediction_pattern = r'Odds indicate\s+([^(]+?)\s+will win\s*\((\d+(?:\.\d+)?)\s*%\s*probability\)'
+        prediction_match = re.search(prediction_pattern, page_text, re.IGNORECASE)
+        
+        if not prediction_match:
+            logger.debug("No 'Odds indicate' prediction found on page")
+            return None
+        
+        predicted_winner_raw = prediction_match.group(1).strip()
+        win_probability = float(prediction_match.group(2))
+        
+        logger.info(f"✓ Found prediction: {predicted_winner_raw} ({win_probability}%)")
+        
+        # Extract match details
+        details = {
+            'predicted_winner': clean_player_name(predicted_winner_raw),
+            'win_probability': win_probability,
+            'raw_prediction_text': prediction_match.group(0)
+        }
+        
+        # Try to extract tournament name
+        try:
+            # Look for tournament name in breadcrumbs or header
+            tournament_elem = driver.find_element(By.CSS_SELECTOR, 'h1, h2, .tournament-name, .breadcrumb')
+            tournament_text = tournament_elem.text
+            # Extract tournament name (before player names)
+            if ' vs ' in tournament_text:
+                details['tournament_name'] = tournament_text.split(' vs ')[0].split('\n')[0].strip()
+            else:
+                details['tournament_name'] = tournament_text.split('\n')[0].strip()
+        except Exception as e:
+            logger.debug(f"Could not extract tournament name: {e}")
+            details['tournament_name'] = "Unknown Tournament"
+        
+        # Try to extract match datetime
+        try:
+            # Look for date/time elements
+            datetime_elem = driver.find_element(By.CSS_SELECTOR, 'time, .match-time, .match-date')
+            datetime_text = datetime_elem.text.strip()
+            details['match_datetime'] = parse_match_date(datetime_text)
+        except Exception as e:
+            logger.debug(f"Could not extract match datetime: {e}")
+            # Default to tomorrow at noon if can't find
+            from datetime import timedelta
+            details['match_datetime'] = datetime.now() + timedelta(days=1, hours=12)
+        
+        # Try to extract surface
+        try:
+            surface_match = re.search(r'\b(hard|clay|grass|carpet)\b', page_text, re.IGNORECASE)
+            if surface_match:
+                details['surface'] = surface_match.group(1).capitalize()
+            else:
+                details['surface'] = None
+        except Exception:
+            details['surface'] = None
+        
+        # Try to extract tour type
+        try:
+            tour_match = re.search(r'\b(ATP|WTA|ITF|Challenger)\b', page_text, re.IGNORECASE)
+            if tour_match:
+                details['tour_type'] = tour_match.group(1).upper()
+            else:
+                details['tour_type'] = 'ATP'  # Default to ATP
+        except Exception:
+            details['tour_type'] = 'ATP'
+        
+        return details
+        
+    except Exception as e:
+        logger.error(f"Error scraping prediction details: {e}")
+        return None
+
+
 def main():
     """Main execution using Selenium"""
     setup_logging()
@@ -165,6 +263,8 @@ def main():
         'errors': []
     }
     
+    driver = None
+    
     try:
         # Step 1: Scrape homepage
         predictions = scrape_matchstat_homepage_selenium()
@@ -175,7 +275,7 @@ def main():
             logger.info("💡 This could mean:")
             logger.info("   1. No tennis matches today")
             logger.info("   2. Predictions not released yet (try later)")
-            logger.info("   3. Predictions require Matchstat account/login")
+            logger.info("   3. No tennis matches scheduled")
             
             log_scrape(
                 scrape_type='predictions',
@@ -187,24 +287,146 @@ def main():
             )
             return
         
-        # Step 2: For each match, get details and save
-        logger.info(f"\n⚠️ Found {len(predictions)} matches")
-        logger.info("⚠️ NOTE: These may not have predictions yet (just match listings)")
-        logger.info("⚠️ Real predictions usually come closer to match time\n")
+        logger.info(f"\n✓ Found {len(predictions)} matches on homepage")
+        logger.info("Now checking each match for predictions...\n")
         
-        # For now, just log what we found
-        for i, pred in enumerate(predictions, 1):
-            logger.info(f"{i}. {pred['player1']['name']} vs {pred['player2']['name']} - {pred['h2h_url']}")
+        # Step 2: For each match, scrape details and save to database
+        driver = get_driver()
         
-        logger.info(f"\nExecution time: {time.time() - start_time:.2f} seconds")
-        logger.info("\n💡 To actually scrape and save predictions:")
-        logger.info("   1. Visit one of the H2H URLs above")
-        logger.info("   2. Check if there's a clear prediction (who will win)")
-        logger.info("   3. If yes, the scraper needs to be updated to extract that")
-        logger.info("   4. If no, predictions come later (check back in a few hours)")
+        for i, match in enumerate(predictions, 1):
+            try:
+                logger.info(f"\n[{i}/{len(predictions)}] Processing: {match['player1']['name']} vs {match['player2']['name']}")
+                
+                # Scrape prediction details from H2H page
+                details = scrape_prediction_details(match['h2h_url'], driver)
+                
+                if not details:
+                    logger.info(f"⊘ No prediction available for this match")
+                    stats['failed'] += 1
+                    continue
+                
+                # Prepare data for database
+                prediction_data = {
+                    'player1_name': match['player1']['name'],
+                    'player2_name': match['player2']['name'],
+                    'predicted_winner': details['predicted_winner'],
+                    'tournament_name': details.get('tournament_name', 'Unknown'),
+                    'match_datetime': details['match_datetime'],
+                    'matchstat_url': match['h2h_url'],
+                    'player1_country': match['player1'].get('country'),
+                    'player2_country': match['player2'].get('country'),
+                    'player1_rank': match['player1'].get('rank'),
+                    'player2_rank': match['player2'].get('rank'),
+                    'surface': details.get('surface'),
+                    'tour_type': details.get('tour_type', 'ATP'),
+                    'raw_prediction_text': details.get('raw_prediction_text'),
+                    'prediction_summary': {
+                        'win_probability': details.get('win_probability'),
+                        'homepage_odds': match.get('homepage_odds')
+                    }
+                }
+                
+                # Validate data
+                if not validate_prediction_data(prediction_data):
+                    logger.error(f"✗ Invalid prediction data - skipping")
+                    stats['failed'] += 1
+                    stats['errors'].append(f"Invalid data for {match['player1']['name']} vs {match['player2']['name']}")
+                    continue
+                
+                # Save prediction to database
+                prediction_id = save_prediction(
+                    player1_name=prediction_data['player1_name'],
+                    player2_name=prediction_data['player2_name'],
+                    predicted_winner_name=prediction_data['predicted_winner'],
+                    tournament_name=prediction_data['tournament_name'],
+                    match_datetime=prediction_data['match_datetime'],
+                    matchstat_url=prediction_data['matchstat_url'],
+                    player1_country=prediction_data.get('player1_country'),
+                    player2_country=prediction_data.get('player2_country'),
+                    player1_rank=prediction_data.get('player1_rank'),
+                    player2_rank=prediction_data.get('player2_rank'),
+                    surface=prediction_data.get('surface'),
+                    tour_type=prediction_data.get('tour_type'),
+                    raw_prediction_text=prediction_data.get('raw_prediction_text'),
+                    prediction_summary=prediction_data.get('prediction_summary')
+                )
+                
+                if prediction_id:
+                    stats['saved'] += 1
+                    
+                    # Save odds snapshot if we have odds data
+                    odds = match.get('homepage_odds', {})
+                    if odds.get('player1') and odds.get('player2'):
+                        try:
+                            save_odds_snapshot(
+                                prediction_id=prediction_id,
+                                bookmaker='Matchstat',
+                                player1_odds=odds['player1'],
+                                player2_odds=odds['player2'],
+                                odds_type='prediction_time'
+                            )
+                        except Exception as e:
+                            logger.warning(f"Could not save odds: {e}")
+                
+                else:
+                    logger.info(f"⊘ Prediction already in database")
+                
+                # Polite delay between requests
+                smart_delay(2, 4)
+                
+            except Exception as e:
+                logger.error(f"Error processing match {i}: {e}", exc_info=True)
+                stats['failed'] += 1
+                stats['errors'].append(str(e))
+        
+        # Log results
+        execution_time = time.time() - start_time
+        
+        logger.info("\n" + "="*60)
+        logger.info("SCRAPING COMPLETE")
+        logger.info("="*60)
+        logger.info(f"Matches found: {stats['found']}")
+        logger.info(f"Predictions saved: {stats['saved']}")
+        logger.info(f"Failed/Skipped: {stats['failed']}")
+        logger.info(f"Execution time: {execution_time:.2f} seconds")
+        
+        # Determine status
+        if stats['saved'] == 0 and stats['found'] > 0:
+            status = 'partial'  # Found matches but no predictions
+        elif stats['failed'] > stats['saved']:
+            status = 'partial'
+        else:
+            status = 'success'
+        
+        # Log to database
+        log_scrape(
+            scrape_type='predictions',
+            matches_found=stats['found'],
+            matches_saved=stats['saved'],
+            matches_failed=stats['failed'],
+            errors='; '.join(stats['errors'][:5]) if stats['errors'] else None,
+            status=status,
+            execution_time=execution_time,
+            pages_scraped=stats['found'] + 1  # Homepage + detail pages
+        )
         
     except Exception as e:
         logger.error(f"Fatal error: {e}", exc_info=True)
+        
+        log_scrape(
+            scrape_type='predictions',
+            matches_found=stats['found'],
+            matches_saved=stats['saved'],
+            matches_failed=stats['failed'],
+            errors=str(e),
+            status='failed',
+            execution_time=time.time() - start_time,
+            pages_scraped=1
+        )
+    
+    finally:
+        if driver:
+            driver.quit()
 
 
 if __name__ == '__main__':
