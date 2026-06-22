@@ -12,7 +12,7 @@ jobs:
     
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
@@ -34,7 +34,7 @@ jobs:
       
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: results-scraper-logs-${{ github.run_number }}
           path: logs/

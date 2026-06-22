@@ -27,26 +27,28 @@ def get_pool():
     global _pool
     if _pool is None:
         try:
-            # Parse DATABASE_URL and handle SSL mode properly
-            db_url = Config.DATABASE_URL
+            # Get database URL and clean it
+            db_url = Config.DATABASE_URL.strip()
             
-            # Fix SSL mode for psycopg2 compatibility
-            # Replace sslmode=require with proper SSL parameters
-            if 'sslmode=require' in db_url:
-                db_url = db_url.replace('sslmode=require', '')
-                # Add sslmode as a separate parameter
-                _pool = SimpleConnectionPool(
-                    minconn=1,
-                    maxconn=10,
-                    dsn=db_url,
-                    sslmode='require'
-                )
-            else:
-                _pool = SimpleConnectionPool(
-                    minconn=1,
-                    maxconn=10,
-                    dsn=db_url
-                )
+            # Remove sslmode from URL if present (we'll add it separately)
+            if '?sslmode=' in db_url or '&sslmode=' in db_url:
+                # Split URL and query parameters
+                if '?' in db_url:
+                    base_url, query = db_url.split('?', 1)
+                    # Remove sslmode parameter
+                    params = [p for p in query.split('&') if not p.startswith('sslmode=')]
+                    if params:
+                        db_url = base_url + '?' + '&'.join(params)
+                    else:
+                        db_url = base_url
+            
+            # Create pool with SSL mode as parameter
+            _pool = SimpleConnectionPool(
+                minconn=1,
+                maxconn=10,
+                dsn=db_url,
+                sslmode='require'
+            )
             logger.info("✓ Database connection pool created")
         except Exception as e:
             logger.error(f"Failed to create connection pool: {e}")
