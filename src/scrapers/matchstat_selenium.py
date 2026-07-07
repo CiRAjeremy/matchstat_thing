@@ -35,9 +35,21 @@ def get_driver():
     chrome_options.add_argument('--headless')  # Run in background
     chrome_options.add_argument('--no-sandbox')
     chrome_options.add_argument('--disable-dev-shm-usage')
+    chrome_options.add_argument('--disable-gpu')
+    chrome_options.add_argument('--disable-software-rasterizer')
     chrome_options.add_argument(f'user-agent={Config.USER_AGENT}')
     
-    driver = webdriver.Chrome(options=chrome_options)
+    # Use ChromeDriverManager for automatic driver management
+    try:
+        from selenium.webdriver.chrome.service import Service
+        from webdriver_manager.chrome import ChromeDriverManager
+        
+        service = Service(ChromeDriverManager().install())
+        driver = webdriver.Chrome(service=service, options=chrome_options)
+    except ImportError:
+        # Fallback if webdriver-manager not available
+        driver = webdriver.Chrome(options=chrome_options)
+    
     return driver
 
 
