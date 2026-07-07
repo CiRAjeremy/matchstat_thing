@@ -420,6 +420,29 @@ def main():
         logger.info(f"Failed/Skipped: {stats['failed']}")
         logger.info(f"Execution time: {execution_time:.2f} seconds")
         
+        # Send Telegram notification if configured and predictions saved
+        if stats['saved'] > 0:
+            try:
+                from src.notifications import get_notifier
+                notifier = get_notifier()
+                if notifier:
+                    # Build list of saved predictions for notification
+                    saved_predictions = []
+                    for i, match in enumerate(predictions):
+                        if i < stats['saved']:  # Only include actually saved ones
+                            saved_predictions.append({
+                                'player1_name': match['player1']['name'],
+                                'player2_name': match['player2']['name'],
+                                'predicted_winner_name': match.get('predicted_winner', 'Unknown'),
+                                'tournament_name': 'Tournament',
+                                'surface': match.get('surface', 'Unknown')
+                            })
+                    
+                    notifier.notify_new_predictions(saved_predictions)
+                    logger.info("✓ Telegram notification sent")
+            except Exception as e:
+                logger.warning(f"Could not send Telegram notification: {e}")
+        
         # Determine status
         if stats['saved'] == 0 and stats['found'] > 0:
             status = 'partial'  # Found matches but no predictions

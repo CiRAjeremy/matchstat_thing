@@ -46,6 +46,8 @@ jobs:
       - name: Run prediction scraper (Selenium)
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           LOG_LEVEL: INFO
         run: |
           python -m src.scrapers.matchstat_selenium
