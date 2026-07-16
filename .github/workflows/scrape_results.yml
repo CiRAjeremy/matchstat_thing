@@ -32,7 +32,7 @@ jobs:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           LOG_LEVEL: INFO
         run: |
-          python -m src.scrapers.flashscore
+          python run_results_scraper.py
       
       - name: Upload logs on failure
         if: failure()

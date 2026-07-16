@@ -27,6 +27,8 @@ def get_pool():
     global _pool
     if _pool is None:
         try:
+            print("Initializing database connection pool...", flush=True)
+            
             # Get database URL and clean it
             db_url = Config.DATABASE_URL.strip()
             
@@ -49,9 +51,14 @@ def get_pool():
                 dsn=db_url,
                 sslmode='require'
             )
+            print("✓ Database connection pool created successfully", flush=True)
             logger.info("✓ Database connection pool created")
         except Exception as e:
-            logger.error(f"Failed to create connection pool: {e}")
+            error_msg = f"Failed to create database connection pool: {e}"
+            print(f"FATAL DATABASE ERROR: {error_msg}", flush=True)
+            logger.error(error_msg)
+            import traceback
+            traceback.print_exc()
             raise
     return _pool
 

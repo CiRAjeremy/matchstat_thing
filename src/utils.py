@@ -397,69 +397,77 @@ def setup_logging(log_file: str = None, level: str = None) -> logging.Logger:
     Returns:
         logging.Logger: Configured root logger
     """
-    if log_file is None:
-        log_file = Config.LOG_FILE
-    
-    if level is None:
-        level = Config.LOG_LEVEL
-    
-    # Convert string level to logging constant
-    numeric_level = getattr(logging, level.upper(), logging.INFO)
-    
-    # Create logs directory if needed
-    Config.ensure_directories()
-    
-    # Create formatter
-    formatter = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
-    )
-    
-    # File handler
-    file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
-    file_handler.setFormatter(formatter)
-    file_handler.setLevel(numeric_level)
-    
-    # Console handler
     try:
-        # Try to use colored logging
-        import colorlog
-        console_handler = colorlog.StreamHandler()
-        console_formatter = colorlog.ColoredFormatter(
-            '%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S',
-            log_colors={
-                'DEBUG': 'cyan',
-                'INFO': 'green',
-                'WARNING': 'yellow',
-                'ERROR': 'red',
-                'CRITICAL': 'red,bg_white',
-            }
+        if log_file is None:
+            log_file = Config.LOG_FILE
+        
+        if level is None:
+            level = Config.LOG_LEVEL
+        
+        # Convert string level to logging constant
+        numeric_level = getattr(logging, level.upper(), logging.INFO)
+        
+        # Create logs directory if needed
+        Config.ensure_directories()
+        
+        # Create formatter
+        formatter = logging.Formatter(
+            '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            datefmt='%Y-%m-%d %H:%M:%S'
         )
-        console_handler.setFormatter(console_formatter)
-    except ImportError:
-        # Fallback to regular console handler
-        console_handler = logging.StreamHandler()
-        console_handler.setFormatter(formatter)
+        
+        # File handler
+        file_handler = logging.FileHandler(log_file, mode='a', encoding='utf-8')
+        file_handler.setFormatter(formatter)
+        file_handler.setLevel(numeric_level)
+        
+        # Console handler
+        try:
+            # Try to use colored logging
+            import colorlog
+            console_handler = colorlog.StreamHandler()
+            console_formatter = colorlog.ColoredFormatter(
+                '%(log_color)s%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                datefmt='%Y-%m-%d %H:%M:%S',
+                log_colors={
+                    'DEBUG': 'cyan',
+                    'INFO': 'green',
+                    'WARNING': 'yellow',
+                    'ERROR': 'red',
+                    'CRITICAL': 'red,bg_white',
+                }
+            )
+            console_handler.setFormatter(console_formatter)
+        except ImportError:
+            # Fallback to regular console handler
+            console_handler = logging.StreamHandler()
+            console_handler.setFormatter(formatter)
+        
+        console_handler.setLevel(numeric_level)
+        
+        # Configure root logger
+        root_logger = logging.getLogger()
+        root_logger.setLevel(numeric_level)
+        
+        # Remove existing handlers to avoid duplicates
+        root_logger.handlers = []
+        
+        # Add handlers
+        root_logger.addHandler(file_handler)
+        root_logger.addHandler(console_handler)
+        
+        # Reduce noise from third-party libraries
+        logging.getLogger('urllib3').setLevel(logging.WARNING)
+        logging.getLogger('selenium').setLevel(logging.WARNING)
+        
+        return root_logger
     
-    console_handler.setLevel(numeric_level)
-    
-    # Configure root logger
-    root_logger = logging.getLogger()
-    root_logger.setLevel(numeric_level)
-    
-    # Remove existing handlers to avoid duplicates
-    root_logger.handlers = []
-    
-    # Add handlers
-    root_logger.addHandler(file_handler)
-    root_logger.addHandler(console_handler)
-    
-    # Reduce noise from third-party libraries
-    logging.getLogger('urllib3').setLevel(logging.WARNING)
-    logging.getLogger('selenium').setLevel(logging.WARNING)
-    
-    return root_logger
+    except Exception as e:
+        # If logging setup fails, at least print to console
+        print(f"CRITICAL: Failed to setup logging: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 # ═══════════════════════════════════════════════════════════

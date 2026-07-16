@@ -16,7 +16,12 @@ class Config:
     # Database
     DATABASE_URL = os.getenv('DATABASE_URL')
     if not DATABASE_URL:
-        raise ValueError("DATABASE_URL not set in environment variables")
+        error_msg = "DATABASE_URL not set in environment variables"
+        print(f"FATAL CONFIG ERROR: {error_msg}", flush=True)
+        raise ValueError(error_msg)
+    
+    # Strip any whitespace that might cause issues
+    DATABASE_URL = DATABASE_URL.strip()
     
     # Logging
     LOG_LEVEL = os.getenv('LOG_LEVEL', 'INFO').upper()

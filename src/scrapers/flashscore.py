@@ -257,7 +257,14 @@ def main():
         4. Log execution
     """
     # Setup logging
-    setup_logging()
+    try:
+        setup_logging()
+    except Exception as e:
+        print(f"FATAL: Failed to setup logging: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+    
     logger.info("="*60)
     logger.info("STARTING FLASHSCORE RESULTS SCRAPER")
     logger.info("="*60)

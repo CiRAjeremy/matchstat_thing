@@ -332,7 +332,14 @@ def parse_grok_prediction(pred_data: Dict[str, Any]) -> Optional[Dict[str, Any]]
 
 def main():
     """Main execution using Grok AI"""
-    setup_logging()
+    try:
+        setup_logging()
+    except Exception as e:
+        print(f"FATAL: Failed to setup logging: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+    
     logger.info("="*60)
     logger.info("MATCHSTAT SCRAPER - GROK AI VERSION")
     logger.info("="*60)
