@@ -208,7 +208,7 @@ The workflow runs **5 times per day**:
 ============================================================
 MATCHSTAT SCRAPER - GROQ API
 ============================================================
-[OK] API Key found: gsk_dw0sMA...p677
+[OK] API Key found: gsk_xxxxxx...xxxx
 [*] Starting Groq AI scraper...
 ============================================================
 INFO - Using Grok AI to extract predictions from Matchstat

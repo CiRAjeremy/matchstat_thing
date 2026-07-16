@@ -18,7 +18,7 @@ def check_groq_api():
     if not api_key.startswith('gsk_'):
         return False, f"⚠️ API key should start with 'gsk_' (found: {api_key[:4]}...)"
     
-    return True, f"✅ API key found: {api_key[:10]}...{api_key[-4:]}"
+    return True, f"✅ API key found: {api_key[:7]}...{api_key[-4:]}"
 
 
 def check_database():

@@ -97,8 +97,8 @@ def main():
     for var_name, description, required in env_vars:
         value = os.getenv(var_name)
         if value:
-            # Show first 10 chars for verification
-            masked = f"{value[:10]}..." if len(value) > 10 else value[:5] + "..."
+            # Show first 7 chars for verification (less exposure)
+            masked = f"{value[:7]}..." if len(value) > 10 else "***"
             print(f"  ✓ {var_name}: {masked} ({description})")
         else:
             status = "✗" if required else "⚠"
