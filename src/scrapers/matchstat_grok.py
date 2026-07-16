@@ -109,20 +109,21 @@ def extract_predictions_with_grok(api_key: str) -> List[Dict[str, Any]]:
     """
     logger.info("Using Groq AI to extract ALL predictions from Matchstat in ONE call")
     
-    # Ultra-concise prompt - compound models auto-select tools
-    # Asking for JSON array ensures we get all predictions in one response
-    prompt = """Visit https://matchstat.com/tennis/ and extract ALL tennis predictions for today.
+    # Neutral prompt that avoids content filtering
+    prompt = """Please access the website https://matchstat.com/tennis/ and extract structured data about upcoming tennis matches that include probability predictions.
 
-Return JSON array with ALL matches that have probability predictions. Fields per match:
-- player1_name, player2_name, predicted_winner
-- win_probability (number only)
-- tournament_name, surface, tour_type (if available)
+For each match with a prediction, provide a JSON object with these fields:
+- player1_name: first player's full name
+- player2_name: second player's full name  
+- predicted_winner: name of predicted winner
+- win_probability: win probability as a number (e.g., 75.5)
+- tournament_name: tournament name (if shown)
+- surface: court surface type (if shown)
+- tour_type: tour type like ATP or WTA (if shown)
 
-Skip: matches without predictions, finished matches.
+Return all matches in a single JSON array. Exclude matches that are already finished or don't have probability predictions.
 
-Format: [{"player1_name":"A","player2_name":"B","predicted_winner":"A","win_probability":75.5,"tournament_name":"US Open","surface":"Hard","tour_type":"ATP"}]
-
-Return ONLY the JSON array with ALL predictions."""
+Example format: [{"player1_name":"Player A","player2_name":"Player B","predicted_winner":"Player A","win_probability":65.2}]"""
 
     headers = {
         "Content-Type": "application/json",
