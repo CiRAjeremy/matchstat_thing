@@ -34,7 +34,8 @@ def create_driver():
     options.add_argument('--disable-gpu')
     options.add_argument('--window-size=1920,1080')
     
-    driver = uc.Chrome(options=options, version_main=131)
+    # Let undetected-chromedriver auto-detect the Chrome version
+    driver = uc.Chrome(options=options)
     return driver
 
 
