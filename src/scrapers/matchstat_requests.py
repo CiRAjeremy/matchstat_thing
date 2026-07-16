@@ -1,23 +1,21 @@
 """
-Direct Selenium scraper for Matchstat.com
-Falls back when Groq API doesn't have web access
+Simple requests-based scraper for Matchstat.com
+Works with GitHub Actions (no Selenium/Chrome needed)
 """
 import logging
 import time
 import re
 from datetime import datetime, timedelta
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Any
 
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from selenium.common.exceptions import TimeoutException, NoSuchElementException
-import undetected_chromedriver as uc
+import requests
+from bs4 import BeautifulSoup
 
 from src.config import Config
-from src.utils import clean_player_name, validate_prediction_data, setup_logging
+from src.utils import (
+    clean_player_name, validate_prediction_data, setup_logging,
+    get_headers, smart_delay
+)
 from src.database import save_prediction, log_scrape
 
 logger = logging.getLogger(__name__)
@@ -25,66 +23,73 @@ logger = logging.getLogger(__name__)
 MATCHSTAT_URL = "https://matchstat.com/tennis/"
 
 
-def create_driver():
-    """Create undetected Chrome driver for bypassing Cloudflare"""
-    options = uc.ChromeOptions()
-    options.add_argument('--headless=new')
-    options.add_argument('--no-sandbox')
-    options.add_argument('--disable-dev-shm-usage')
-    options.add_argument('--disable-gpu')
-    options.add_argument('--window-size=1920,1080')
-    
-    # Let undetected-chromedriver auto-detect the Chrome version
-    driver = uc.Chrome(options=options)
-    return driver
-
-
-def scrape_matchstat_predictions(driver) -> List[Dict[str, Any]]:
-    """Scrape predictions from Matchstat using Selenium"""
-    logger.info(f"Loading {MATCHSTAT_URL}")
-    driver.get(MATCHSTAT_URL)
-    
-    # Wait for page to load
-    time.sleep(5)
-    
-    predictions = []
+def scrape_matchstat_predictions() -> List[Dict[str, Any]]:
+    """Scrape predictions from Matchstat using requests"""
+    logger.info(f"Fetching {MATCHSTAT_URL}")
     
     try:
-        # Find all match rows with predictions
-        matches = driver.find_elements(By.CSS_SELECTOR, "div[class*='match'], tr[class*='match']")
+        response = requests.get(
+            MATCHSTAT_URL,
+            headers=get_headers(),
+            timeout=Config.REQUEST_TIMEOUT
+        )
+        response.raise_for_status()
         
-        logger.info(f"Found {len(matches)} potential match elements")
+        soup = BeautifulSoup(response.text, 'html.parser')
+        predictions = []
         
-        for match_elem in matches:
+        # Find prediction tables/sections
+        # Matchstat uses various classes - try multiple selectors
+        match_containers = soup.find_all(['tr', 'div'], class_=re.compile(r'match|game|fixture', re.I))
+        
+        logger.info(f"Found {len(match_containers)} potential match containers")
+        
+        for container in match_containers:
             try:
-                # Extract player names
-                player_elems = match_elem.find_elements(By.CSS_SELECTOR, "[class*='player'], [class*='team']")
+                text = container.get_text()
+                
+                # Look for percentage probabilities (e.g., "75%" or "75.5%")
+                prob_matches = re.findall(r'(\d+(?:\.\d+)?)\s*%', text)
+                if len(prob_matches) < 2:
+                    continue
+                
+                # Extract player names - look for name-like patterns
+                # Matchstat typically has names in specific elements
+                player_elems = container.find_all(['a', 'span', 'div'], class_=re.compile(r'player|team|name', re.I))
+                
                 if len(player_elems) < 2:
+                    # Fallback: extract from text
+                    lines = [line.strip() for line in text.split('\n') if line.strip()]
+                    player_lines = [l for l in lines if len(l) > 5 and len(l) < 50 and not l.replace('.','').replace('%','').isdigit()]
+                    if len(player_lines) >= 2:
+                        player1 = clean_player_name(player_lines[0])
+                        player2 = clean_player_name(player_lines[1])
+                    else:
+                        continue
+                else:
+                    player1 = clean_player_name(player_elems[0].get_text())
+                    player2 = clean_player_name(player_elems[1].get_text())
+                
+                if not player1 or not player2 or player1 == player2:
                     continue
                 
-                player1 = clean_player_name(player_elems[0].text)
-                player2 = clean_player_name(player_elems[1].text)
+                # Parse probabilities
+                prob1 = float(prob_matches[0])
+                prob2 = float(prob_matches[1])
                 
-                if not player1 or not player2:
-                    continue
+                # Higher probability wins
+                if prob1 > prob2:
+                    predicted_winner = player1
+                    win_prob = prob1
+                else:
+                    predicted_winner = player2
+                    win_prob = prob2
                 
-                # Look for probability percentage
-                prob_match = re.search(r'(\d+(?:\.\d+)?)\s*%', match_elem.text)
-                if not prob_match:
-                    continue
-                
-                win_prob = float(prob_match.group(1))
-                
-                # Determine predicted winner (higher probability)
-                predicted_winner = player1 if win_prob > 50 else player2
-                
-                # Extract tournament info if available
+                # Extract tournament if available
                 tournament = "Unknown Tournament"
-                try:
-                    tourn_elem = match_elem.find_element(By.CSS_SELECTOR, "[class*='tournament'], [class*='league']")
-                    tournament = tourn_elem.text.strip()
-                except:
-                    pass
+                tourn_elem = container.find_previous(['h3', 'h2', 'div'], class_=re.compile(r'tournament|league|competition', re.I))
+                if tourn_elem:
+                    tournament = tourn_elem.get_text().strip()
                 
                 predictions.append({
                     'player1_name': player1,
@@ -97,14 +102,17 @@ def scrape_matchstat_predictions(driver) -> List[Dict[str, Any]]:
                 })
                 
             except Exception as e:
-                logger.debug(f"Error parsing match element: {e}")
+                logger.debug(f"Error parsing container: {e}")
                 continue
         
         logger.info(f"Extracted {len(predictions)} predictions")
         return predictions
         
+    except requests.RequestException as e:
+        logger.error(f"Error fetching Matchstat: {e}")
+        return []
     except Exception as e:
-        logger.error(f"Error scraping predictions: {e}")
+        logger.error(f"Error parsing Matchstat: {e}")
         return []
 
 
@@ -112,7 +120,7 @@ def main():
     """Main execution"""
     setup_logging()
     logger.info("="*60)
-    logger.info("MATCHSTAT SCRAPER - SELENIUM VERSION")
+    logger.info("MATCHSTAT SCRAPER - REQUESTS VERSION")
     logger.info("="*60)
     
     start_time = time.time()
@@ -124,14 +132,9 @@ def main():
         'errors': []
     }
     
-    driver = None
-    
     try:
-        driver = create_driver()
-        logger.info("Chrome driver initialized")
-        
         # Scrape predictions
-        raw_predictions = scrape_matchstat_predictions(driver)
+        raw_predictions = scrape_matchstat_predictions()
         stats['found'] = len(raw_predictions)
         
         if not raw_predictions:
@@ -210,10 +213,6 @@ def main():
             pages_scraped=1
         )
         raise
-    finally:
-        if driver:
-            driver.quit()
-            logger.info("Chrome driver closed")
 
 
 if __name__ == '__main__':

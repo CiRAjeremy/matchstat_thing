@@ -10,9 +10,9 @@ if __name__ == '__main__':
     try:
         print("Starting predictions scraper...", flush=True)
         
-        # Try Selenium scraper directly (Groq doesn't have web access)
-        from src.scrapers import matchstat_selenium
-        matchstat_selenium.main()
+        # Use simple requests-based scraper (Selenium won't work on GitHub Actions)
+        from src.scrapers import matchstat_requests
+        matchstat_requests.main()
         
         print("Predictions scraper completed successfully", flush=True)
         sys.exit(0)
